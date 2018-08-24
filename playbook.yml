@@ -1,0 +1,77 @@
+---
+- hosts: all
+  become: True
+  tasks:
+
+      - name: install libselinux-python
+        yum: name=libselinux-python state=present
+
+      - name: install unzip
+        yum: name=unzip state=present
+
+      - seboolean:
+        name: httpd_can_network_connect
+        state: yes
+        persistent: yes
+      
+      - name: Install nginx web server
+        yum: name=nginx state=installed update_cache=true
+        notify:
+          - start nginx
+
+      - name: unzip application to /opt/application
+        unarchive: src=application.zip dest=/opt
+        
+      - name: Add runit to yum
+        shell: "curl -s https://packagecloud.io/install/repositories/imeyer/runit/script.rpm.sh | sudo bash"
+
+      - name: install package runit
+        yum: name=runit state=present update_cache=yes
+
+      - name: create directory for the application service
+        file: path=/etc/sv/application state=directory
+
+      - name: copy application run script to /etc/sv/application directory
+        copy:
+          remote_src: True
+          src: /opt/application/run
+          dest: /etc/sv/application/run
+      
+      - name: create symlink to application service for the service directory
+        file:
+          src: /etc/sv/application
+          dest: /etc/service/application
+          state: link
+
+      - name: start and enable runit application service
+        service: name=application enabled=yes state=started
+        when: ansible_distribution_major_version == "7"
+
+      - name: create nginx cert directory
+        file: path=/etc/nginx/cert state=directory
+      
+      - name: create DH parameters file
+        openssl_dhparam: path=/etc/nginx/cert/dhparam.pem size=2048
+        
+      - name: copy key to remote server
+        copy:
+          src: files/self-signed.key
+          dest: /etc/nginx/cert/self-signed.key 
+
+      - name: copy cert to remote server
+        copy:
+          src: files/self-signed.crt
+          dest: /etc/nginx/cert/self-signed.crt
+
+      - name: copy nginx config
+        copy:
+          src: config/nginx.conf
+          dest: /etc/nginx/nginx.conf
+        notify:
+          - reload nginx
+
+  handlers:
+      - name: start nginx
+        service: name=nginx enabled=yes state=started
+      - name: reload nginx
+        service: name=nginx state=reloaded  

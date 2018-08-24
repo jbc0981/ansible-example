@@ -1,0 +1,3 @@
+uuse this to check if the python server is running
+
+netstat -tulpn |grep 80
